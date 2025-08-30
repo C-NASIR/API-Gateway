@@ -5,6 +5,7 @@ from starlette.responses import PlainTextResponse, Response
 from typing import Optional
 from urllib.parse import urljoin
 from .routing_table import PathRouter
+from .circuit_breaker import CircuitBreaker
 
 
 class GatewayRouter:
@@ -15,11 +16,13 @@ class GatewayRouter:
         retries: int = 2,
         retry_delay: float = 0.1,
         client: Optional[httpx.AsyncClient] = None,
+        circuit_breaker: Optional[CircuitBreaker] = None
     ):
         self.router = PathRouter(route_table)
         self.retries = retries
         self.retry_delay = retry_delay
         self.client = client or httpx.AsyncClient(timeout=timeout)
+        self.circuit_breaker = circuit_breaker or CircuitBreaker()
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send):
         if scope["type"] == "lifespan":
@@ -38,6 +41,7 @@ class GatewayRouter:
         query = scope.get("query_string", b"").decode()
 
         backend_base = self.router.match(path)
+        
         if not backend_base:
             await PlainTextResponse("Route not found", status_code=404)(scope, receive, send)
             return
@@ -48,11 +52,16 @@ class GatewayRouter:
 
         backend_response = await self._send_with_retries(method, target_url, headers, body)
 
+
         if backend_response is None:
             await PlainTextResponse(
                 f"Upstream error after {self.retries} retries",
                 status_code=502
             )(scope, receive, send)
+            return
+
+        if isinstance(backend_response, Response):  # circuit breaker shortcut
+            await backend_response(scope, receive, send)
             return
 
         await self._send_response(scope, receive, send, backend_response)
@@ -75,13 +84,22 @@ class GatewayRouter:
             more_body = message.get("more_body", False)
         return body
 
-    async def _send_with_retries(
-        self,
+    async def _send_with_retries(self,
         method: str,
         url: str,
         headers: dict[str, str],
         body: bytes
     ) -> Optional[httpx.Response]:
+        
+        backend = url.split("/")[2]
+
+        if not self.circuit_breaker.allow_request(backend):
+            return PlainTextResponse(
+                "Upstream error after circuit breaker opened",
+                status_code=502,
+                headers={"X-Circuit-Open": "true"}
+            )
+
         attempt = 0
         while attempt <= self.retries:
             try:
@@ -92,12 +110,16 @@ class GatewayRouter:
                     content=body,
                 )
                 if response.status_code < 500:
+                    self.circuit_breaker.record_success(backend)
                     return response
             except httpx.RequestError:
                 pass
+
+            self.circuit_breaker.record_failure(backend)
             attempt += 1
             if attempt <= self.retries:
                 await asyncio.sleep(self.retry_delay)
+
         return None
 
     async def _send_response(
