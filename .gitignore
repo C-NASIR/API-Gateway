@@ -1,0 +1,17 @@
+*.pyc
+.env
+.venv
+venv/
+__pycache__/
+.idea/
+.vscode/
+.DS_Store
+coverage/
+htmlcov/
+.tox/
+.pytest_cache/
+instance/
+.webassets-cache
+celerybeat-schedule
+celerybeat.pid
+*.sqlite                
