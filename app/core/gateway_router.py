@@ -35,6 +35,9 @@ class GatewayRouter:
         self.client = client or httpx.AsyncClient(timeout=timeout)
         self.circuit_breaker = circuit_breaker or CircuitBreaker()
 
+        self.cleanup_callbacks: list[callable] = []
+        self.add_cleanup_callback(self.client.aclose)
+
     async def __call__(self, scope: Scope, receive: Receive, send: Send):
         if scope["type"] == "lifespan":
             await self._handle_lifespan(scope, receive, send)
@@ -176,12 +179,18 @@ class GatewayRouter:
             media_type=backend_response.headers.get("content-type"),
         )(scope, receive, send)
 
+    def add_cleanup_callback(self, cb: callable) -> None:
+        self.cleanup_callbacks.append(cb)
+
     async def _handle_lifespan(self, scope: Scope, receive: Receive, send: Send):
         while True:
             message = await receive()
             if message["type"] == "lifespan.startup":
                 await send({"type": "lifespan.startup.complete"})
             elif message["type"] == "lifespan.shutdown":
-                await self.client.aclose()
+                for cb in self.cleanup_callbacks:
+                    result = cb()
+                    if asyncio.iscoroutine(result): await result
+                logger.info("[gateway] Shutdown complete. All resources closed.")
                 await send({"type": "lifespan.shutdown.complete"})
                 return
