@@ -5,10 +5,10 @@ from starlette.types import Scope, Receive, Send, Message
 from starlette.responses import PlainTextResponse, Response
 from typing import Optional
 from urllib.parse import urljoin
-from .trace import trace_id_var
 from .routing_table import PathRouter
 from .circuit_breaker import CircuitBreaker
-
+from .header_rewrite import HeaderRewriter
+from .trace import trace_id_var
 
 logger = logging.getLogger(__name__)
 
@@ -21,13 +21,19 @@ class GatewayRouter:
         retries: int = 2,
         retry_delay: float = 0.1,
         client: Optional[httpx.AsyncClient] = None,
-        circuit_breaker: Optional[CircuitBreaker] = None
+        circuit_breaker: Optional[CircuitBreaker] = None,
+        header_rewriter: Optional[HeaderRewriter] = None,
     ):
         self.router = PathRouter(route_table)
         self.retries = retries
         self.retry_delay = retry_delay
         self.client = client or httpx.AsyncClient(timeout=timeout)
         self.circuit_breaker = circuit_breaker or CircuitBreaker()
+
+        self.header_rewriter = header_rewriter or HeaderRewriter(
+            remove=["authorization", "cookie"],
+            set_={"x-gateway": "my-api-gateway"}
+        )
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send):
         if scope["type"] == "lifespan":
@@ -83,14 +89,10 @@ class GatewayRouter:
         return f"{url}?{query}" if query else url
 
     def _extract_headers(self, scope: Scope) -> dict[str, str]:
-        headers = {k.decode(): v.decode() for k, v in scope.get("headers", [])}
-        headers.pop("host", None)
-
-        trace_id = trace_id_var.get()
-        if trace_id:
-            headers["x-trace-id"] = trace_id  # Inject trace ID into outbound request
-
-        return headers
+        raw_headers = scope.get("headers", [])
+        rewritten = self.header_rewriter.rewrite(raw_headers, scope, trace_id_var.get())
+        rewritten.pop("host", None)
+        return rewritten
 
     async def _read_body(self, receive: Receive) -> bytes:
         body = b""
