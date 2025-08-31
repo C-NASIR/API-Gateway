@@ -4,7 +4,7 @@ from httpx import ASGITransport
 from asgi_lifespan import LifespanManager
 from starlette.responses import PlainTextResponse, JSONResponse
 from app.core.router import GatewayRouter
-from app.core.circuit_breaker import CircuitBreaker  # wherever you put the class
+from app.core.circuit_breaker import CircuitBreaker 
 
 
 class FlakyBackend:

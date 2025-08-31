@@ -1,11 +1,16 @@
 import asyncio
 import httpx
+import logging
 from starlette.types import Scope, Receive, Send, Message
 from starlette.responses import PlainTextResponse, Response
 from typing import Optional
 from urllib.parse import urljoin
+from .trace import trace_id_var
 from .routing_table import PathRouter
 from .circuit_breaker import CircuitBreaker
+
+
+logger = logging.getLogger(__name__)
 
 
 class GatewayRouter:
@@ -40,20 +45,24 @@ class GatewayRouter:
         method = scope["method"]
         query = scope.get("query_string", b"").decode()
 
+        logger.info(f"Incoming request: {method} {path}?{query}")
+
         backend_base = self.router.match(path)
-        
         if not backend_base:
+            logger.warning(f"No route match for {path}")
             await PlainTextResponse("Route not found", status_code=404)(scope, receive, send)
             return
 
         target_url = self._construct_target_url(backend_base, path, query)
+        logger.info(f"Proxying request to: {target_url}")
+
         headers = self._extract_headers(scope)
         body = await self._read_body(receive)
 
         backend_response = await self._send_with_retries(method, target_url, headers, body)
 
-
         if backend_response is None:
+            logger.error(f"Upstream failure after {self.retries} retries for {target_url}")
             await PlainTextResponse(
                 f"Upstream error after {self.retries} retries",
                 status_code=502
@@ -61,9 +70,12 @@ class GatewayRouter:
             return
 
         if isinstance(backend_response, Response):  # circuit breaker shortcut
+            logger.warning(f"Circuit breaker blocked request to {target_url}")
             await backend_response(scope, receive, send)
             return
 
+        logger.info(f"Successful response from backend: \
+                    {target_url} ({backend_response.status_code})")
         await self._send_response(scope, receive, send, backend_response)
 
     def _construct_target_url(self, base: str, path: str, query: str) -> str:
@@ -73,6 +85,11 @@ class GatewayRouter:
     def _extract_headers(self, scope: Scope) -> dict[str, str]:
         headers = {k.decode(): v.decode() for k, v in scope.get("headers", [])}
         headers.pop("host", None)
+
+        trace_id = trace_id_var.get()
+        if trace_id:
+            headers["x-trace-id"] = trace_id  # Inject trace ID into outbound request
+
         return headers
 
     async def _read_body(self, receive: Receive) -> bytes:
@@ -94,6 +111,7 @@ class GatewayRouter:
         backend = url.split("/")[2]
 
         if not self.circuit_breaker.allow_request(backend):
+            logger.warning(f"Circuit breaker is OPEN for {backend}, request blocked.")
             return PlainTextResponse(
                 "Upstream error after circuit breaker opened",
                 status_code=502,
@@ -103,6 +121,7 @@ class GatewayRouter:
         attempt = 0
         while attempt <= self.retries:
             try:
+                logger.info(f"Attempt {attempt+1} to {url}")
                 response = await self.client.request(
                     method=method,
                     url=url,
@@ -112,14 +131,16 @@ class GatewayRouter:
                 if response.status_code < 500:
                     self.circuit_breaker.record_success(backend)
                     return response
-            except httpx.RequestError:
-                pass
+            except httpx.RequestError as e:
+                logger.error(f"Request error to {url}: {str(e)}")
 
             self.circuit_breaker.record_failure(backend)
             attempt += 1
             if attempt <= self.retries:
+                logger.info(f"Retrying after delay ({self.retry_delay}s)")
                 await asyncio.sleep(self.retry_delay)
 
+        logger.error(f"All retries failed for {url}")
         return None
 
     async def _send_response(
