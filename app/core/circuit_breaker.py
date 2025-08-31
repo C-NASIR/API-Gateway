@@ -25,4 +25,14 @@ class CircuitBreaker:
         self.last_failure_time[backend] = now
         if self.failure_count[backend] >= self.failure_threshold:
             self.open_until[backend] = now + self.recovery_time
+    
+    def get_status(self) -> dict[str, str]:
+        now = time.time()
+        status = {}
+        for backend in set(self.failure_count.keys()) | set(self.open_until.keys()):
+            if self.open_until[backend] > now:
+                status[backend] = "open"
+            else:
+                status[backend] = "closed"
+        return status
 
