@@ -4,7 +4,7 @@ from httpx import ASGITransport
 from asgi_lifespan import LifespanManager
 from starlette.responses import JSONResponse
 from app.core.gateway_router import GatewayRouter
-from app.core.rate_limit import RateLimitMiddleware, InMemoryRateLimiter
+from app.core.rate_limiter import RateLimitMiddleware, InMemoryRateLimiter
 
 
 # Fake backend handler

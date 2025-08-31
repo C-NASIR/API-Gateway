@@ -7,7 +7,7 @@ from typing import Optional, Any
 from urllib.parse import urljoin
 from .routing_table import PathRouter
 from .circuit_breaker import CircuitBreaker
-from .header_rewrite import HeaderRewriter
+from .header_rewriter import HeaderRewriter
 from .trace import trace_id_var
 
 logger = logging.getLogger(__name__)
