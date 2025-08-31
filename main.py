@@ -1,5 +1,5 @@
 
-from app.core.router import GatewayRouter
+from app.core.gateway_router import GatewayRouter
 from app.core.rate_limit import RateLimitMiddleware, InMemoryRateLimiter
 from app.core.trace import TraceMiddleware
 from app.core.logging_setup import configure_logging

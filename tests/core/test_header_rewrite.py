@@ -3,7 +3,7 @@ import httpx
 from httpx import ASGITransport
 from asgi_lifespan import LifespanManager
 from starlette.responses import JSONResponse
-from app.core.router import GatewayRouter
+from app.core.gateway_router import GatewayRouter
 from app.core.trace import TraceMiddleware
 
 
@@ -16,7 +16,7 @@ async def echo_headers_backend(scope, receive, send):
 @pytest.mark.anyio
 async def test_gateway_rewrites_and_forwards_headers():
     backend_url = "http://fake-backend"
-    route_table = {"/api": backend_url}
+    route_table = {"/api": {"backend": backend_url}}
 
     # Fake backend app behind the gateway
     transport = ASGITransport(app=echo_headers_backend)

@@ -3,7 +3,7 @@ import httpx
 from httpx import ASGITransport
 from asgi_lifespan import LifespanManager
 from starlette.responses import JSONResponse, PlainTextResponse
-from app.core.router import GatewayRouter
+from app.core.gateway_router import GatewayRouter
 
 class FlakyBackend:
     def __init__(self, fail_times: int):
@@ -23,7 +23,7 @@ class FlakyBackend:
 @pytest.mark.anyio
 async def test_retries_then_success():
     backend_url = "http://fake-backend"
-    route_table = {"/test": backend_url}
+    route_table = {"/test": {"backend": backend_url}}
     backend = FlakyBackend(fail_times=1)  # fail once, then succeed
     transport = ASGITransport(app=backend)
 
@@ -43,7 +43,7 @@ async def test_retries_exhausted_then_fail():
     backend = FlakyBackend(fail_times=5)  # fail too many times
     transport = ASGITransport(app=backend)
     backend_url = "http://fake-backend"
-    route_table = {"/test": backend_url}
+    route_table = {"/test": {"backend": backend_url}}
 
     fake_client = httpx.AsyncClient(transport=transport, base_url=backend_url)
 

@@ -3,7 +3,7 @@ import httpx
 from httpx import ASGITransport
 from asgi_lifespan import LifespanManager
 from starlette.responses import JSONResponse
-from app.core.router import GatewayRouter
+from app.core.gateway_router import GatewayRouter
 from app.core.rate_limit import RateLimitMiddleware, InMemoryRateLimiter
 
 
@@ -15,9 +15,7 @@ async def fake_backend(scope, receive, send):
 @pytest.mark.anyio
 async def test_rate_limit_blocks_excessive_requests():
     backend_url = "http://fake-backend"
-    route_table = {
-        "/api": backend_url
-    }
+    route_table = { "/api": {"backend": backend_url}}
 
     # Backend stub
     transport = ASGITransport(app=fake_backend)

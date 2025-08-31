@@ -3,7 +3,7 @@ import httpx
 import uuid
 import logging
 from httpx import ASGITransport
-from app.core.router import GatewayRouter
+from app.core.gateway_router import GatewayRouter
 from asgi_lifespan import LifespanManager
 from starlette.responses import JSONResponse, PlainTextResponse
 from app.core.trace import TraceMiddleware, trace_id_var
@@ -13,8 +13,7 @@ from app.core.trace import TraceMiddleware, trace_id_var
 # Helpers
 # ----------------------------
 
-def build_gateway_app(backend_app, route_table):
-    backend_url = list(route_table.values())[0]
+def build_gateway_app(backend_app, route_table, backend_url):
     transport = ASGITransport(app=backend_app)
     fake_client = httpx.AsyncClient(transport=transport, base_url=backend_url)
     return TraceMiddleware(GatewayRouter(route_table=route_table, client=fake_client))
@@ -44,8 +43,9 @@ async def backend_with_logging(scope, receive, send):
 
 @pytest.mark.anyio
 async def test_trace_id_is_injected_by_gateway():
-    route_table = {"/api": "http://fake-backend"}
-    app = build_gateway_app(echo_trace_id_backend, route_table)
+    backend_url = "http://fake-users"
+    route_table = {"/api": {"backend": backend_url}}
+    app = build_gateway_app(echo_trace_id_backend, route_table, backend_url)
 
     async with LifespanManager(app):
         async with httpx.AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -61,8 +61,9 @@ async def test_trace_id_is_injected_by_gateway():
 
 @pytest.mark.anyio
 async def test_trace_id_is_preserved_if_sent_by_client():
-    route_table = {"/api": "http://fake-backend"}
-    app = build_gateway_app(echo_trace_id_backend, route_table)
+    backend_url = "http://fake-users"
+    route_table = {"/api": {"backend": backend_url}}
+    app = build_gateway_app(echo_trace_id_backend, route_table, backend_url)
 
     async with LifespanManager(app):
         async with httpx.AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -78,8 +79,9 @@ async def test_trace_id_is_preserved_if_sent_by_client():
 async def test_trace_id_appears_in_logs(caplog):
     caplog.set_level(logging.INFO, logger="test-observability")
 
-    route_table = {"/api": "http://fake-backend"}
-    app = build_gateway_app(backend_with_logging, route_table)
+    backend_url = "http://fake-users"
+    route_table = {"/api": {"backend": backend_url}}
+    app = build_gateway_app(backend_with_logging, route_table, backend_url)
 
     async with LifespanManager(app):
         async with httpx.AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:

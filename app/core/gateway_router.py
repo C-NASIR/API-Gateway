@@ -3,7 +3,7 @@ import httpx
 import logging
 from starlette.types import Scope, Receive, Send, Message
 from starlette.responses import PlainTextResponse, Response
-from typing import Optional
+from typing import Optional, Any
 from urllib.parse import urljoin
 from .routing_table import PathRouter
 from .circuit_breaker import CircuitBreaker
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class GatewayRouter:
     def __init__(
         self,
-        route_table: dict[str, str],
+        route_table: dict[str, Any],
         timeout: float = 5.0,
         retries: int = 2,
         retry_delay: float = 0.1,
@@ -25,15 +25,15 @@ class GatewayRouter:
         header_rewriter: Optional[HeaderRewriter] = None,
     ):
         self.router = PathRouter(route_table)
-        self.retries = retries
-        self.retry_delay = retry_delay
-        self.client = client or httpx.AsyncClient(timeout=timeout)
-        self.circuit_breaker = circuit_breaker or CircuitBreaker()
-
-        self.header_rewriter = header_rewriter or HeaderRewriter(
+        self.default_retries = retries
+        self.default_retry_delay = retry_delay
+        self.default_timeout = timeout
+        self.default_header_rewriter = header_rewriter or HeaderRewriter(
             remove=["authorization", "cookie"],
             set_={"x-gateway": "my-api-gateway"}
         )
+        self.client = client or httpx.AsyncClient(timeout=timeout)
+        self.circuit_breaker = circuit_breaker or CircuitBreaker()
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send):
         if scope["type"] == "lifespan":
@@ -50,27 +50,40 @@ class GatewayRouter:
         path = scope["path"]
         method = scope["method"]
         query = scope.get("query_string", b"").decode()
-
         logger.info(f"Incoming request: {method} {path}?{query}")
 
-        backend_base = self.router.match(path)
+        backend_base, config = self.router.match(path)
         if not backend_base:
             logger.warning(f"No route match for {path}")
             await PlainTextResponse("Route not found", status_code=404)(scope, receive, send)
             return
 
+        retries = config.get("retries", self.default_retries)
+        retry_delay = config.get("retry_delay", self.default_retry_delay)
+        timeout = config.get("timeout", self.default_timeout)
+        header_policy = config.get("header_policy", None)
+
+        if header_policy:
+            modified_policy = {k if k != "set" else "set_": v for k, v in header_policy.items()}
+            header_rewriter = HeaderRewriter(**modified_policy)
+        else:
+            header_rewriter = self.default_header_rewriter
+
         target_url = self._construct_target_url(backend_base, path, query)
         logger.info(f"Proxying request to: {target_url}")
 
-        headers = self._extract_headers(scope)
+        headers = self._extract_headers(scope, header_rewriter)
         body = await self._read_body(receive)
 
-        backend_response = await self._send_with_retries(method, target_url, headers, body)
+        backend_response = await self._send_with_retries(
+            method, target_url, headers, body,
+            retries=retries, retry_delay=retry_delay, timeout=timeout
+        )
 
         if backend_response is None:
-            logger.error(f"Upstream failure after {self.retries} retries for {target_url}")
+            logger.error(f"Upstream failure after {retries} retries for {target_url}")
             await PlainTextResponse(
-                f"Upstream error after {self.retries} retries",
+                f"Upstream error after {retries} retries",
                 status_code=502
             )(scope, receive, send)
             return
@@ -80,17 +93,16 @@ class GatewayRouter:
             await backend_response(scope, receive, send)
             return
 
-        logger.info(f"Successful response from backend: \
-                    {target_url} ({backend_response.status_code})")
+        logger.info(f"Successful response from backend: {target_url} ({backend_response.status_code})")
         await self._send_response(scope, receive, send, backend_response)
 
     def _construct_target_url(self, base: str, path: str, query: str) -> str:
         url = urljoin(base, path)
         return f"{url}?{query}" if query else url
 
-    def _extract_headers(self, scope: Scope) -> dict[str, str]:
+    def _extract_headers(self, scope: Scope, header_rewriter: HeaderRewriter) -> dict[str, str]:
         raw_headers = scope.get("headers", [])
-        rewritten = self.header_rewriter.rewrite(raw_headers, scope, trace_id_var.get())
+        rewritten = header_rewriter.rewrite(raw_headers, scope, trace_id_var.get())
         rewritten.pop("host", None)
         return rewritten
 
@@ -103,13 +115,17 @@ class GatewayRouter:
             more_body = message.get("more_body", False)
         return body
 
-    async def _send_with_retries(self,
+    async def _send_with_retries(
+        self,
         method: str,
         url: str,
         headers: dict[str, str],
-        body: bytes
+        body: bytes,
+        retries: int,
+        retry_delay: float,
+        timeout: float
     ) -> Optional[httpx.Response]:
-        
+
         backend = url.split("/")[2]
 
         if not self.circuit_breaker.allow_request(backend):
@@ -121,7 +137,7 @@ class GatewayRouter:
             )
 
         attempt = 0
-        while attempt <= self.retries:
+        while attempt <= retries:
             try:
                 logger.info(f"Attempt {attempt+1} to {url}")
                 response = await self.client.request(
@@ -129,6 +145,7 @@ class GatewayRouter:
                     url=url,
                     headers=headers,
                     content=body,
+                    timeout=timeout or self.default_timeout
                 )
                 if response.status_code < 500:
                     self.circuit_breaker.record_success(backend)
@@ -138,9 +155,9 @@ class GatewayRouter:
 
             self.circuit_breaker.record_failure(backend)
             attempt += 1
-            if attempt <= self.retries:
-                logger.info(f"Retrying after delay ({self.retry_delay}s)")
-                await asyncio.sleep(self.retry_delay)
+            if attempt <= retries:
+                logger.info(f"Retrying after delay ({retry_delay}s)")
+                await asyncio.sleep(retry_delay)
 
         logger.error(f"All retries failed for {url}")
         return None

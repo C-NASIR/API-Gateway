@@ -3,7 +3,7 @@ import httpx
 from httpx import ASGITransport
 from asgi_lifespan import LifespanManager
 from starlette.responses import PlainTextResponse, JSONResponse
-from app.core.router import GatewayRouter
+from app.core.gateway_router import GatewayRouter
 from app.core.circuit_breaker import CircuitBreaker 
 
 
@@ -26,7 +26,7 @@ class FlakyBackend:
 @pytest.mark.anyio
 async def test_circuit_breaker_resets_after_recovery():
     backend_url = "http://fake-backend"
-    route_table = {"/api": backend_url}
+    route_table = {"/api": {"backend": backend_url}}
 
     # Backend fails 2 times, then starts working
     flaky_backend = FlakyBackend(fail_times=2)
