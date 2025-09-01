@@ -1,14 +1,17 @@
 import asyncio
 import httpx
+import time
 import logging
 from starlette.types import Scope, Receive, Send, Message
 from starlette.responses import PlainTextResponse, Response
 from typing import Optional, Any
 from urllib.parse import urljoin
+from app.core.metrics import REQUEST_COUNT, REQUEST_DURATION, ACTIVE_REQUESTS
 from .routing_table import PathRouter
 from .circuit_breaker import CircuitBreaker
 from .header_rewriter import HeaderRewriter
 from .trace import trace_id_var
+
 
 logger = logging.getLogger(__name__)
 
@@ -66,24 +69,27 @@ class GatewayRouter:
         timeout = config.get("timeout", self.default_timeout)
         header_policy = config.get("header_policy", None)
 
-        if header_policy:
-            modified_policy = {k if k != "set" else "set_": v for k, v in header_policy.items()}
-            header_rewriter = HeaderRewriter(**modified_policy)
-        else:
-            header_rewriter = self.default_header_rewriter
-
+        header_rewriter = self._get_header_rewriter(header_policy)
         target_url = self._construct_target_url(backend_base, path, query)
         logger.info(f"Proxying request to: {target_url}")
 
         headers = self._extract_headers(scope, header_rewriter)
         body = await self._read_body(receive)
 
-        backend_response = await self._send_with_retries(
-            method, target_url, headers, body,
-            retries=retries, retry_delay=retry_delay, timeout=timeout
-        )
+        ACTIVE_REQUESTS.inc()
+        start = time.time()
+        try:
+            backend_response = await self._send_with_retries(
+                method, target_url, headers, body,
+                retries=retries, retry_delay=retry_delay, timeout=timeout
+            )
+        finally:
+            duration = time.time() - start
+            ACTIVE_REQUESTS.dec()
+            REQUEST_DURATION.labels(route=path).observe(duration)
 
         if backend_response is None:
+            REQUEST_COUNT.labels(method=method, route=path, status="502").inc()
             logger.error(f"Upstream failure after {retries} retries for {target_url}")
             await PlainTextResponse(
                 f"Upstream error after {retries} retries",
@@ -92,13 +98,24 @@ class GatewayRouter:
             return
 
         if isinstance(backend_response, Response):  # circuit breaker shortcut
+            status_code = backend_response.status_code
+            REQUEST_COUNT.labels(method=method, route=path, status=str(status_code)).inc()
             logger.warning(f"Circuit breaker blocked request to {target_url}")
             await backend_response(scope, receive, send)
             return
 
-        logger.info(f"Successful response from backend: {target_url} ({backend_response.status_code})")
+        REQUEST_COUNT.labels(method=method, route=path,
+                             status=str(backend_response.status_code)).inc()
+        logger.info(f"Successful response from backend: \
+                    {target_url} ({backend_response.status_code})")
         await self._send_response(scope, receive, send, backend_response)
 
+    def _get_header_rewriter(self, policy: dict | None) -> HeaderRewriter:
+        if not policy:
+            return self.default_header_rewriter
+        mod = {k if k != "set" else "set_": v for k, v in policy.items()}
+        return HeaderRewriter(**mod)
+    
     def _construct_target_url(self, base: str, path: str, query: str) -> str:
         url = urljoin(base, path)
         return f"{url}?{query}" if query else url

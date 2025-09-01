@@ -1,6 +1,8 @@
 from typing import Any
 from starlette.types import ASGIApp, Scope, Receive, Send
-from starlette.responses import PlainTextResponse, JSONResponse
+from starlette.responses import PlainTextResponse, JSONResponse, Response
+from prometheus_client import CONTENT_TYPE_LATEST
+from app.core.metrics import render_prometheus_metrics
 from app.core.gateway_router import GatewayRouter
 
 
@@ -18,6 +20,8 @@ class AdminRouter:
             await self.circuit(scope, receive, send)
         elif path == "/__limits":
             await self.limits(scope, receive, send)
+        elif path == "/__metrics":
+            await self.metrics(scope, receive, send)
         else:
             await PlainTextResponse("Not Found", status_code=404)(scope, receive, send)
 
@@ -49,3 +53,8 @@ class AdminRouter:
         }
 
         await JSONResponse(data)(scope, receive, send)
+    
+
+    async def metrics(self, scope: Scope, receive: Receive, send: Send) -> None:
+        data, content_type = render_prometheus_metrics()
+        await Response( content=data, media_type=content_type)(scope, receive, send)
