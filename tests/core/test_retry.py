@@ -3,6 +3,7 @@ import httpx
 from httpx import ASGITransport
 from asgi_lifespan import LifespanManager
 from starlette.responses import JSONResponse, PlainTextResponse
+from app.core.path_router import PathRouter
 from app.core.gateway_router import GatewayRouter
 
 class FlakyBackend:
@@ -29,7 +30,8 @@ async def test_retries_then_success():
 
     fake_client = httpx.AsyncClient(transport=transport, base_url=backend_url)
 
-    app = GatewayRouter(route_table, client=fake_client, retries=2)
+    path_router = PathRouter(route_table=route_table)
+    app = GatewayRouter(path_router, client=fake_client, retries=2)
 
     async with LifespanManager(app):
         client = httpx.AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
@@ -47,7 +49,8 @@ async def test_retries_exhausted_then_fail():
 
     fake_client = httpx.AsyncClient(transport=transport, base_url=backend_url)
 
-    app = GatewayRouter(route_table, client=fake_client, retries=2)
+    path_router = PathRouter(route_table=route_table)
+    app = GatewayRouter(path_router, client=fake_client, retries=2)
 
     async with LifespanManager(app):
         client = httpx.AsyncClient(transport=ASGITransport(app=app), base_url="http://test")

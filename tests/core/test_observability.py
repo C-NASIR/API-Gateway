@@ -7,6 +7,7 @@ from app.core.gateway_router import GatewayRouter
 from asgi_lifespan import LifespanManager
 from starlette.responses import JSONResponse, PlainTextResponse
 from app.core.trace import TraceMiddleware, trace_id_var
+from app.core.path_router import PathRouter
 
 
 # ----------------------------
@@ -16,7 +17,8 @@ from app.core.trace import TraceMiddleware, trace_id_var
 def build_gateway_app(backend_app, route_table, backend_url):
     transport = ASGITransport(app=backend_app)
     fake_client = httpx.AsyncClient(transport=transport, base_url=backend_url)
-    return TraceMiddleware(GatewayRouter(route_table=route_table, client=fake_client))
+    path_router = PathRouter(route_table=route_table)
+    return TraceMiddleware(GatewayRouter(path_router, client=fake_client))
 
 
 # ----------------------------

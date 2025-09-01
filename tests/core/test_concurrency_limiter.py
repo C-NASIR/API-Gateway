@@ -6,6 +6,7 @@ from asgi_lifespan import LifespanManager
 from starlette.responses import PlainTextResponse
 from app.core.concurrency_limiter import ConcurrencyLimiterMiddleware
 from app.core.gateway_router import GatewayRouter
+from app.core.path_router import PathRouter
 
 # Backend handler that holds the semaphore long enough to overlap
 async def delayed_backend(scope, receive, send):
@@ -20,7 +21,8 @@ async def test_concurrency_limit_blocks_excess():
     transport = ASGITransport(app=delayed_backend)
     fake_client = httpx.AsyncClient(transport=transport, base_url=backend_url)
 
-    app = GatewayRouter(route_table=route_table, client=fake_client)
+    path_router = PathRouter(route_table=route_table)
+    app = GatewayRouter(path_router, client=fake_client)
     app = ConcurrencyLimiterMiddleware(app, max_concurrent=3)
 
     async with LifespanManager(app):

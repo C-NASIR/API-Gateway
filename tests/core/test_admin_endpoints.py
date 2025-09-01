@@ -8,6 +8,7 @@ from starlette.responses import PlainTextResponse
 from app.core.gateway_router import GatewayRouter
 from app.core.admin_router import AdminRouter
 from app.core.mount_admin_first import MountAdminFirst
+from app.core.path_router import PathRouter
 
 ROUTE_TABLE = {
     "/api": "http://backend1.local",
@@ -27,7 +28,8 @@ async def test_admin_endpoints():
     transport = ASGITransport(app=fake_backend)
     fake_client = httpx.AsyncClient(transport=transport, base_url="http://backend1.local")
 
-    gateway = GatewayRouter(route_table=ROUTE_TABLE, client=fake_client)
+    path_router = PathRouter(route_table=ROUTE_TABLE)
+    gateway = GatewayRouter(path_router, client=fake_client)
     admin = AdminRouter(gateway)
     app = MountAdminFirst(admin, gateway)
 

@@ -4,6 +4,7 @@ from httpx import ASGITransport
 from asgi_lifespan import LifespanManager
 from starlette.responses import JSONResponse
 from app.core.gateway_router import GatewayRouter
+from app.core.path_router import PathRouter
 from app.core.trace import TraceMiddleware
 
 
@@ -23,12 +24,8 @@ async def test_gateway_rewrites_and_forwards_headers():
     fake_client = httpx.AsyncClient(transport=transport, base_url=backend_url)
 
     # Gateway with TraceMiddleware + GatewayRouter with header rewriting
-    app = TraceMiddleware(
-        GatewayRouter(
-            route_table=route_table,
-            client=fake_client
-        )
-    )
+    path_router = PathRouter(route_table=route_table)
+    app = TraceMiddleware(GatewayRouter(path_router,client=fake_client))
 
     async with LifespanManager(app):
         async with httpx.AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:

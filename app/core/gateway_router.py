@@ -7,7 +7,8 @@ from starlette.responses import PlainTextResponse, Response
 from typing import Optional, Any
 from urllib.parse import urljoin
 from app.core.metrics import REQUEST_COUNT, REQUEST_DURATION, ACTIVE_REQUESTS
-from .routing_table import PathRouter
+from app.config.routes import ROUTE_TABLE
+from .path_router import PathRouter
 from .circuit_breaker import CircuitBreaker
 from .header_rewriter import HeaderRewriter
 from .trace import trace_id_var
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 class GatewayRouter:
     def __init__(
         self,
-        route_table: dict[str, Any],
+        path_router: PathRouter = None,
         timeout: float = 5.0,
         retries: int = 2,
         retry_delay: float = 0.1,
@@ -27,7 +28,7 @@ class GatewayRouter:
         circuit_breaker: Optional[CircuitBreaker] = None,
         header_rewriter: Optional[HeaderRewriter] = None,
     ):
-        self.router = PathRouter(route_table)
+        self.path_router = path_router or PathRouter(ROUTE_TABLE)
         self.default_retries = retries
         self.default_retry_delay = retry_delay
         self.default_timeout = timeout
@@ -58,7 +59,7 @@ class GatewayRouter:
         query = scope.get("query_string", b"").decode()
         logger.info(f"Incoming request: {method} {path}?{query}")
 
-        backend_base, config = self.router.match(path)
+        backend_base, config = self.path_router.match(path)
         if not backend_base:
             logger.warning(f"No route match for {path}")
             await PlainTextResponse("Route not found", status_code=404)(scope, receive, send)

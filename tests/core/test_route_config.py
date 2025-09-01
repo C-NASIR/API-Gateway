@@ -3,6 +3,7 @@ import httpx
 from httpx import ASGITransport
 from starlette.responses import JSONResponse
 from asgi_lifespan import LifespanManager
+from app.core.path_router import PathRouter
 from app.core.gateway_router import GatewayRouter
 
 
@@ -31,11 +32,13 @@ async def test_custom_route_config_with_inline_header_policy():
         }
     }
 
+
     # Stub backend setup
     transport = ASGITransport(app=echo_headers_backend)
     fake_client = httpx.AsyncClient(transport=transport, base_url="http://fake-backend")
 
-    app = GatewayRouter(route_table=route_table, client=fake_client)
+    path_router = PathRouter(route_table=route_table)
+    app = GatewayRouter(path_router=path_router, client=fake_client)
 
     async with LifespanManager(app):
         async with httpx.AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:

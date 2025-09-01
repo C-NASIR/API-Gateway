@@ -1,6 +1,9 @@
 starlette==0.47.3
 httpx==0.28.0
 anyio==4.10.0
+redis==6.4.0
+prometheus-client==0.22.1
+python-dotenv==1.1.1
 
 # For running the gateway
 uvicorn==0.35.0
@@ -9,4 +12,4 @@ uvicorn==0.35.0
 pytest==8.4.1
 pytest-asyncio==1.1.0
 asgi-lifespan==2.1.0
-prometheus-client==0.22.1
+fakeredis==2.31.1

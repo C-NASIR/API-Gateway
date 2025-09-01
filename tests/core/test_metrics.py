@@ -11,6 +11,7 @@ from app.core.mount_admin_first import MountAdminFirst
 from app.core.trace import TraceMiddleware
 from app.core.rate_limiter import RateLimitMiddleware, InMemoryRateLimiter
 from app.core.concurrency_limiter import ConcurrencyLimiterMiddleware
+from app.core.path_router import PathRouter
 from app.config.routes import ROUTE_TABLE
 
 # Fake backend that always returns 200
@@ -28,7 +29,8 @@ async def test_metrics_endpoint_exposes_prometheus_data():
     transport = ASGITransport(app=fake_backend)
     fake_client = httpx.AsyncClient(transport=transport, base_url=backend_url)
 
-    gateway = GatewayRouter(route_table=route_table, client=fake_client)
+    path_router = PathRouter(route_table=route_table)
+    gateway = GatewayRouter(path_router, client=fake_client)
     gateway = RateLimitMiddleware(gateway, InMemoryRateLimiter(limit=100, window_seconds=60))
     gateway = ConcurrencyLimiterMiddleware(gateway, max_concurrent=5)
     gateway = TraceMiddleware(gateway)

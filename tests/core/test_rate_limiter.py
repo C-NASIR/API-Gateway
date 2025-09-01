@@ -4,6 +4,7 @@ from httpx import ASGITransport
 from asgi_lifespan import LifespanManager
 from starlette.responses import JSONResponse
 from app.core.gateway_router import GatewayRouter
+from app.core.path_router import PathRouter
 from app.core.rate_limiter import RateLimitMiddleware, InMemoryRateLimiter
 
 
@@ -23,8 +24,9 @@ async def test_rate_limit_blocks_excessive_requests():
 
     # Gateway with rate limit
     limiter = InMemoryRateLimiter(limit=3, window_seconds=1)
+    path_router = PathRouter(route_table=route_table)
     app = RateLimitMiddleware(
-        GatewayRouter(route_table=route_table, client=fake_client),
+        GatewayRouter(path_router, client=fake_client),
         limiter=limiter
     )
 

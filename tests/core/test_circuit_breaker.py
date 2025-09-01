@@ -5,6 +5,7 @@ from asgi_lifespan import LifespanManager
 from starlette.responses import PlainTextResponse, JSONResponse
 from app.core.gateway_router import GatewayRouter
 from app.core.circuit_breaker import CircuitBreaker 
+from app.core.path_router import PathRouter
 
 
 class FlakyBackend:
@@ -36,8 +37,9 @@ async def test_circuit_breaker_resets_after_recovery():
     # Circuit breaker opens after 2 failures, recovers after 0.1s
     breaker = CircuitBreaker(failure_threshold=2, recovery_time=0.1)
 
+    path_router = PathRouter(route_table=route_table)
     app = GatewayRouter(
-        route_table=route_table,
+        path_router=path_router,
         client=fake_client,
         circuit_breaker=breaker,
         retries=0  # Disable retries to test circuit breaker directly
