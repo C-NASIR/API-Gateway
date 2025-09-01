@@ -163,7 +163,7 @@ api_gateway/
 
 ## 💡 Why I Built This
 
-I wanted to go beyond CRUD apps and build something that mimics real production infrastructure. This project helped me learn:
+This project was a deep dive into building production-grade systems that go beyond surface-level functionality.
 
 - Async Python at scale
 - Systems-level resilience patterns
