@@ -25,17 +25,17 @@ This is designed to be a **real-world learning project** and a showcase for high
 ## 🧱 Architecture
 
 ```
-+-------------+       +----------------+       +------------------+
-|  Client     | <---> |  API Gateway   | <---> | Backend Service   |
-+-------------+       +----------------+       +------------------+
-                          |     |     |
-                          |     |     |
-                 +--------+     |     +-----------+
-                 |              |                 |
-        +----------------+   +---------------+   +---------------+
-        | Rate Limiter   |   | Retry/Circuit |   | Observability |
-        | (Redis)        |   | Layer         |   | + Logging     |
-        +----------------+   +---------------+   +---------------+
++-------------+           +----------------+           +------------------+
+|  Client     | <-------> |  API Gateway   | <-------> | Backend Service  |
++-------------+           +----------------+           +------------------+
+                            |     |     |
+                            |     |     |
+                +-----------+     |     +-----------+
+                |                 |                 |
+    +----------------+     +---------------+     +---------------+
+    | Rate Limiter   |     | Retry/Circuit |     | Observability |
+    | (Redis)        |     | Layer         |     | + Logging     |
+    +----------------+     +---------------+     +---------------+
 ```
 
 - All requests pass through routing, observability, rate limiting, and retry logic
