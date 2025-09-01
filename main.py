@@ -11,15 +11,17 @@ import uvicorn
 configure_logging()
 
 # Base gateway app
-gateway_app = GatewayRouter(route_table=ROUTE_TABLE)
+core_gateway = GatewayRouter(route_table=ROUTE_TABLE)
 
-# Apply middlewares
-gateway_app = RateLimitMiddleware(gateway_app, InMemoryRateLimiter(limit=5, window_seconds=10))
+# Apply middlewares to a wrapped version
+gateway_app = RateLimitMiddleware(core_gateway, InMemoryRateLimiter(limit=5, window_seconds=10))
 gateway_app = ConcurrencyLimiterMiddleware(gateway_app, max_concurrent=100)
 gateway_app = TraceMiddleware(gateway_app)
 
-# Add admin routes with prefix /__
-admin_app = AdminRouter(gateway_app)
+# Admin gets direct access to the unwrapped GatewayRouter instance
+admin_app = AdminRouter(core_gateway)
+
+# Mount admin + gateway stack
 app = MountAdminFirst(admin_app, gateway_app)
 
 if __name__ == "__main__":

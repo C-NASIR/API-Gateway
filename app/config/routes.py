@@ -1,5 +1,7 @@
 ROUTE_TABLE = {
-    "/api": "http://localhost:5001",
+    "/api": {
+        "backend": "http://localhost:5001",
+    },
     "/auth": {
         "backend": "http://localhost:5002",
         "retries": 5,
