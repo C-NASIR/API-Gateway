@@ -32,10 +32,10 @@ This is designed to be a **real-world learning project** and a showcase for high
                           |     |     |
                  +--------+     |     +-----------+
                  |              |                 |
-        +----------------+   +------------+   +---------------+
+        +----------------+   +---------------+   +---------------+
         | Rate Limiter   |   | Retry/Circuit |   | Observability |
-        | (Redis)        |   | Layer        |   | + Logging     |
-        +----------------+   +------------+   +---------------+
+        | (Redis)        |   | Layer         |   | + Logging     |
+        +----------------+   +---------------+   +---------------+
 ```
 
 - All requests pass through routing, observability, rate limiting, and retry logic
