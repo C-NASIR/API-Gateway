@@ -218,7 +218,7 @@ gateway_rate_limited_total{route="/users"} 12
 **Location:** Madison, WI  
 **Role Target:** Early–Mid Backend Engineer (Python, Infra, Systems)
 
-Let’s connect if you’re building resilient systems or hiring engineers who love infrastructure from first principles.
+Let’s connect if you’re passionate about resilient systems or enjoy building infrastructure from first principles.
 
 ---
 
